@@ -16,7 +16,6 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 	if (result) {
 		std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
 			file << ":" << line << " '" << func << "' \n";
-		// Make sure we call CUDA Device Reset before exiting
 		cudaDeviceReset();
 		exit(99);
 	}
@@ -30,6 +29,7 @@ __global__ void test(float3* fb, int max_x, int max_y) {
 	int pixel_index = j * max_x * 3 + i * 3;
 	fb[pixel_index] = { float(i) / max_x,float(j) / max_y,.2 };
 }
+
 void testRender(int nx, int ny, float3* output) {
 
 	int tx = 8;
@@ -77,7 +77,7 @@ __device__ int cuda_raytrace_object(T* obj_array, int obj_arr_size, int skip_idx
 }
 template<typename T, typename R>
 __device__ float3 cuda_calculate_color(
-	Light* light_arr, int light_arr_size, T* blocker_arr, int blocker_arr_size, int skip_idx, float3 frag_point, float3 frag_normal, float3 view_pos, R rdr_object) 
+	Light* light_arr, int light_arr_size, T* blocker_arr, int blocker_arr_size, int skip_idx, float3 frag_point, float3 frag_normal, float3 view_pos, R rdr_object, int depth) 
 {
 	float3 finalColor = { 0,0,0 };
 	for (int light_idx = 0; light_idx < light_arr_size; light_idx++) {
@@ -105,6 +105,47 @@ __device__ float3 cuda_calculate_color(
 	return finalColor;
 }
 
+__device__ float3 illuminate(Ray ray, Sphere* spheres, int sphere_size, Triangle* triangles, int triangle_size, Light* lights, int light_size, int depth) {
+	float3 finalColor = { 0,0,0 };
+	for (int d = depth; d > 0; d--) {
+		float3 sphere_frag_point = { 0,0,0 };
+		float3 sphere_frag_normal = { 0,0,0 };
+
+		float3 triangle_frag_point = { 0,0,0 };
+		float3 triangle_frag_normal = { 0,0,0 };
+
+		float3 frag_point = { 0,0,0 };
+		float3 frag_normal = { 0,0,0 };
+
+		float sphere_min_dist = FLT_MAX;
+		float triangle_min_dist = FLT_MAX;
+
+		int hit_sphere_idx = cuda_raytrace_object<Sphere>(spheres, sphere_size, -1, ray, sphere_frag_point, sphere_frag_normal, sphere_min_dist);
+		int hit_triangle_idx = cuda_raytrace_object<Triangle>(triangles, triangle_size, -1, ray, triangle_frag_point, triangle_frag_normal, triangle_min_dist);
+
+		if (hit_sphere_idx != -1 && sphere_min_dist <= triangle_min_dist) {
+			Sphere rdr_sphere = spheres[hit_sphere_idx];
+			finalColor = finalColor +
+				0.5 * cuda_calculate_color(lights, light_size, spheres, sphere_size, hit_sphere_idx, sphere_frag_point, sphere_frag_normal, ray.origin, rdr_sphere, 1);
+			frag_point = sphere_frag_point;
+			frag_normal = sphere_frag_normal;
+		}
+		else if (hit_triangle_idx != -1 && triangle_min_dist < sphere_min_dist) {
+			Triangle rdr_triangle = triangles[hit_triangle_idx];
+			finalColor = finalColor + 
+				0.5 * cuda_calculate_color(lights, light_size, spheres, sphere_size, -1, triangle_frag_point, triangle_frag_normal, ray.origin, rdr_triangle, 1);
+			frag_point = triangle_frag_point;
+			frag_normal = triangle_frag_normal;
+		}
+		else {
+			break;
+		}
+		ray = Ray(frag_point, ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal);
+		depth--;
+	}
+	return finalColor;
+}
+
 __global__ void cuda_trace(Scene* scene, int max_x, int max_y, float scene_screen_ratio, float3* fb) {
 	int sx = threadIdx.x + blockIdx.x * blockDim.x;
 	int sy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -123,32 +164,7 @@ __global__ void cuda_trace(Scene* scene, int max_x, int max_y, float scene_scree
 	float3 rayDir = rayEnd - rayOrigin;
 	rayDir = normalize(rayDir);
 	Ray ray = Ray(rayOrigin, rayDir);
-
-	float3 sphere_frag_point = { 0,0,0 };
-	float3 sphere_frag_normal = { 0,0,0 };
-
-	float3 triangle_frag_point = { 0,0,0 };
-	float3 triangle_frag_normal = { 0,0,0 };
-
-	float sphere_min_dist = FLT_MAX;
-	float triangle_min_dist = FLT_MAX;
-
-	int hit_sphere_idx = cuda_raytrace_object<Sphere>(scene->spheres, scene->sphere_size, -1, ray, sphere_frag_point, sphere_frag_normal, sphere_min_dist);
-	int hit_triangle_idx = cuda_raytrace_object<Triangle>(scene->triangles, scene->triangle_size, -1 , ray, triangle_frag_point, triangle_frag_normal, triangle_min_dist);
-
-	if (hit_sphere_idx != -1 && sphere_min_dist <= triangle_min_dist) {
-		Sphere rdr_sphere = scene->spheres[hit_sphere_idx];
-		fb[pixel_index] = 
-			cuda_calculate_color(scene->lights, scene->light_size, scene->spheres, scene->sphere_size, hit_sphere_idx, sphere_frag_point, sphere_frag_normal, rayOrigin, rdr_sphere);
-	}
-	else if (hit_triangle_idx != -1 && triangle_min_dist < sphere_min_dist){
-		Triangle rdr_triangle = scene->triangles[hit_triangle_idx];
-		fb[pixel_index] = 
-			cuda_calculate_color(scene->lights, scene->light_size, scene->spheres, scene->sphere_size, -1, triangle_frag_point, triangle_frag_normal, rayOrigin, rdr_triangle);
-	}
-	else {
-		fb[pixel_index] = BG_COLOR;
-	}
+	fb[pixel_index] = illuminate(ray, scene->spheres, scene->sphere_size, scene->triangles, scene->triangle_size, scene->lights, scene->light_size, 2);
 }
 
 __device__ void cuda_create_objects(Scene* scene) {
@@ -172,6 +188,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 	float quad_length = 6;
 	float quad_x_offset = 0;
 	float quad_z_offset = -5;
+
 	float3 quad_v1 = { -quad_length/2 + quad_x_offset,quad_y_offset,-quad_length/2 + quad_z_offset };
 	float3 quad_v2 = { quad_length/2 + quad_x_offset,quad_y_offset,-quad_length/2 + quad_z_offset };
 	float3 quad_v3 = { quad_length/2 + quad_x_offset,quad_y_offset,quad_length/2 + quad_z_offset };
