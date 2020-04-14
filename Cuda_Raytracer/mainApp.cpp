@@ -55,7 +55,7 @@ void setup_viewport() {
 	glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0.0, SCREEN_WIDTH, 0.0, SCREEN_HEIGHT, 0.0, 1.0); // this creates a canvas you can do 2D drawing on
+	glOrtho(0.0, SCREEN_WIDTH, 0.0, SCREEN_HEIGHT, 0.0, 1.0); 
 
 }
 //void construct_scene() {
