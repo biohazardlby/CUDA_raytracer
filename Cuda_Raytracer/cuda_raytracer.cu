@@ -16,6 +16,8 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 	if (result) {
 		std::cerr << "CUDA error = " << static_cast<unsigned int>(result) << " at " <<
 			file << ":" << line << " '" << func << "' \n";
+		// Make sure we call CUDA Device Reset before exiting
+		std::cerr << "Err name: " << cudaGetErrorName(result) << "\n" << cudaGetErrorString(result);
 		cudaDeviceReset();
 		exit(99);
 	}
@@ -97,33 +99,45 @@ __device__ float3 calculate_light_object(Object* objects, int object_size, int h
 	}
 	return final_color;
 }
-__device__ float3 illuminate_object(float3 viewPos, Ray ray, Object* objects, int object_size, Light* lights, int light_size, int depth) {
+__device__ void dummy(int i) {
+	if (i == 0) return;
+	dummy(i - 1);
+}
+__device__ float3 illuminate_object(float3 viewPos, Ray ray, Object* objects, int object_size, Light* lights, int light_size, int kd) {
+	dummy(0);
+
 	float3 frag_point = { 0,0,0 };
 	float3 frag_normal = { 0,0,0 };
 	float3 final_color = { 0,0,0 };
-	float last_object_reflectiveness = 0;
-	for (int d = depth; d > 0; d--) {
-		float min_dist = FLT_MAX;
-		int rdr_obj_idx = raytrace_object(ray, objects, object_size, frag_point, frag_normal, min_dist);
-		if (rdr_obj_idx != -1) {
-			float3 added_color = calculate_light_object(objects, object_size, rdr_obj_idx, frag_point, frag_normal, viewPos, lights, light_size);
-			if (d == depth) {
-				final_color = final_color + added_color;
-			}
-			else {
-				final_color = final_color + added_color * last_object_reflectiveness;
-			}
-			last_object_reflectiveness = objects[rdr_obj_idx].reflection;
+
+	//start with objects color
+	float last_object_reflectiveness = 1;
+	float min_dist = FLT_MAX;
+	int rdr_obj_idx = raytrace_object(ray, objects, object_size, frag_point, frag_normal, min_dist);
+	if (rdr_obj_idx != -1) {
+		final_color = final_color + calculate_light_object(objects, object_size, rdr_obj_idx, frag_point, frag_normal, viewPos, lights, light_size);
+		ray.origin = frag_point;
+		ray.direction = ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal;
+		last_object_reflectiveness *= objects[rdr_obj_idx].reflectiveness;
+	}
+	else {
+		return BG_COLOR;
+	}
+	//after some experience, cuda has very limited stack and recursive function seems to always exceed stack limits for some reason. In this case, I'm using while loop
+	//to calculate the reflection and refraction. 
+	while (kd > 0) {
+		int reflect_obj_idx = raytrace_object(ray, objects, object_size, frag_point, frag_normal, min_dist);
+		if (reflect_obj_idx != -1) {
+			float3 added_color = calculate_light_object(objects, object_size, reflect_obj_idx, frag_point, frag_normal, viewPos, lights, light_size);
+			final_color = final_color + added_color * last_object_reflectiveness;
 			ray.origin = frag_point;
 			ray.direction = ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal;
+			last_object_reflectiveness *= objects[rdr_obj_idx].reflectiveness;
+			kd--;
 		}
 		else {
-			if (d == depth) {
-				return BG_COLOR;
-			}
-			else {
-				break;
-			}
+			final_color = final_color + BG_COLOR * last_object_reflectiveness;
+			break;
 		}
 	}
 	return final_color;
@@ -145,122 +159,9 @@ __global__ void cuda_trace_object(Scene* scene, int max_x, int max_y, float scen
 
 	float3 rayDir = rayEnd - rayOrigin;
 	rayDir = normalize(rayDir);
-	Ray ray = Ray(rayOrigin, rayDir);
-	fb[pixel_index] = illuminate_object(rayOrigin, ray, scene->objects, scene->object_size, scene->lights, scene->light_size, 2);
+	Ray camera_ray = Ray(rayOrigin, rayDir);
+	fb[pixel_index] = illuminate_object(rayOrigin, camera_ray, scene->objects, scene->object_size, scene->lights, scene->light_size, 1);
 }
-
-//legacy trace
-/*
-template<typename T>
-__device__ int cuda_raytrace(T* obj_array, int obj_arr_size, int skip_idx, Ray ray, float3& frag_point, float3& frag_normal, float& minDist) {
-	int hit = -1;
-	for (int obj_idx = 0; obj_idx < obj_arr_size; obj_idx++) {
-		if (obj_idx == skip_idx) continue;
-		T cur_obj = obj_array[obj_idx];
-		float3 hit_point = { 0,0,0 };
-		float3 hit_normal = { 0,0,0 };
-		if (cur_obj.rayTrace(ray, hit_point, hit_normal)) {
-			float hit_distance = length(ray.origin - frag_point);
-			if (hit_distance <= minDist) {
-				hit = obj_idx;
-				frag_point = hit_point;
-				frag_normal = hit_normal;
-				minDist = hit_distance;
-			}
-		}
-	}
-	return hit;
-}
-template<typename T, typename R>
-__device__ float3 cuda_calculate_color(
-	Light* light_arr, int light_arr_size, T* blocker_arr, int blocker_arr_size, int skip_idx, float3 frag_point, float3 frag_normal, float3 view_pos, R rdr_object, int depth)
-{
-	float3 finalColor = { 0,0,0 };
-	for (int light_idx = 0; light_idx < light_arr_size; light_idx++) {
-		Light cur_light = light_arr[light_idx];
-		float3 blockRayDir = cur_light.position - frag_point;
-		blockRayDir = normalize(blockRayDir);
-		Ray blockRay = Ray(frag_point, blockRayDir);
-
-		float3 blocked_frag_pos = { 0,0,0 };
-		float3 blocked_frag_normal = { 0,0,0 };
-		float blocked_min_dist = FLT_MAX;
-
-		if (cuda_raytrace<T>(blocker_arr, blocker_arr_size, skip_idx, blockRay, blocked_frag_pos, blocked_frag_normal, blocked_min_dist) != -1)
-		{
-			finalColor = finalColor + cur_light.ambientColor;
-		}
-		else {
-			float3 rdr_object_diffuse = rdr_object.get_color(frag_point);
-			float rdr_object_shininess = rdr_object.shininess;
-			finalColor = finalColor + phongShading(
-				cur_light.position, frag_normal, frag_point,
-				view_pos, cur_light.color, cur_light.ambientColor, rdr_object_diffuse, rdr_object_shininess);
-		}
-	}
-	return finalColor;
-}
-__device__ float3 illuminate(Ray ray, Sphere* spheres, int sphere_size, Triangle* triangles, int triangle_size, Light* lights, int light_size, int depth) {
-	float3 finalColor = { 0,0,0 };
-	for (int d = depth; d > 0; d--) {
-		float3 sphere_frag_point = { 0,0,0 };
-		float3 sphere_frag_normal = { 0,0,0 };
-
-		float3 triangle_frag_point = { 0,0,0 };
-		float3 triangle_frag_normal = { 0,0,0 };
-
-		float3 frag_point = { 0,0,0 };
-		float3 frag_normal = { 0,0,0 };
-
-		float sphere_min_dist = FLT_MAX;
-		float triangle_min_dist = FLT_MAX;
-
-		int hit_sphere_idx = cuda_raytrace<Sphere>(spheres, sphere_size, -1, ray, sphere_frag_point, sphere_frag_normal, sphere_min_dist);
-		int hit_triangle_idx = cuda_raytrace<Triangle>(triangles, triangle_size, -1, ray, triangle_frag_point, triangle_frag_normal, triangle_min_dist);
-
-		if (hit_sphere_idx != -1 && sphere_min_dist <= triangle_min_dist) {
-			Sphere rdr_sphere = spheres[hit_sphere_idx];
-			finalColor = finalColor +
-				0.5 * cuda_calculate_color(lights, light_size, spheres, sphere_size, hit_sphere_idx, sphere_frag_point, sphere_frag_normal, ray.origin, rdr_sphere, 1);
-			frag_point = sphere_frag_point;
-			frag_normal = sphere_frag_normal;
-		}
-		else if (hit_triangle_idx != -1 && triangle_min_dist < sphere_min_dist) {
-			Triangle rdr_triangle = triangles[hit_triangle_idx];
-			finalColor = finalColor +
-				0.5 * cuda_calculate_color(lights, light_size, spheres, sphere_size, -1, triangle_frag_point, triangle_frag_normal, ray.origin, rdr_triangle, 1);
-			frag_point = triangle_frag_point;
-			frag_normal = triangle_frag_normal;
-		}
-		else {
-			break;
-		}
-		ray = Ray(frag_point, ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal);
-		depth--;
-	}
-	return finalColor;
-}
-__global__ void cuda_trace(Scene* scene, int max_x, int max_y, float scene_screen_ratio, float3* fb) {
-	int sx = threadIdx.x + blockIdx.x * blockDim.x;
-	int sy = threadIdx.y + blockIdx.y * blockDim.y;
-	if ((sx >= max_x) || (sy >= max_y)) return;
-	int pixel_index = sy * max_x * 3 + sx * 3;
-
-	Camera cam = scene->current_cam;
-
-	float3 rayOrigin = { 0,0,0 };
-	float3 rayEnd = {
-		-cam.filmPlane_width / 2 + sx * scene_screen_ratio,
-		-cam.filmPlane_height / 2 + sy * scene_screen_ratio,
-		-cam.rayTrace_plane_dist
-	};
-
-	float3 rayDir = rayEnd - rayOrigin;
-	rayDir = normalize(rayDir);
-	Ray ray = Ray(rayOrigin, rayDir);
-	fb[pixel_index] = illuminate(ray, scene->spheres, scene->sphere_size, scene->triangles, scene->triangle_size, scene->lights, scene->light_size, 2);
-}
-*/
 __device__ void cuda_create_objects(Scene* scene) {
 
 
@@ -268,13 +169,13 @@ __device__ void cuda_create_objects(Scene* scene) {
 	s1->set_sphere({ -0.5, 1 ,-4 }, 0.85);
 	s1->color = { .6,.6,0 };
 	s1->shininess = 16;
-	s1->reflection = 0;
+	s1->reflectiveness = 0;
 
 	Object* s2 = new Object();
 	s2->set_sphere({ 0.5, 0.6, -6 }, .65);
 	s2->color = { 0,.4,.4 };
 	s2->shininess = 50;
-	s2->reflection = .4;
+	s2->reflectiveness = .4;
 
 	scene->addObject(*s1);
 	scene->addObject(*s2);
@@ -376,6 +277,14 @@ __global__ void cuda_set_scene(Scene* scene) {
 }
 
 void init_cuda(int screen_width, int screen_height) {
+	//set stack size
+	size_t max_stack_size;
+	checkCudaErrors(cudaThreadGetLimit(&max_stack_size, cudaLimitStackSize));
+	checkCudaErrors(cudaDeviceSynchronize());
+	printf("max stack size = %d\n", max_stack_size);
+
+	checkCudaErrors(cudaThreadSetLimit(cudaLimitStackSize, max_stack_size));
+	checkCudaErrors(cudaDeviceSynchronize());
 
 	nx = screen_width;
 	ny = screen_height;

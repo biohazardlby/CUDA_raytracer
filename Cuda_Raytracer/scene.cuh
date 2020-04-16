@@ -25,8 +25,11 @@ public:
 
 	//material properties
 	float3 color = { 1,0,0 };
-	float reflection = 0.2;
+	float reflectiveness = 0.2;
 	float shininess = 10;
+
+	float refractive_index = 1;
+	float transparency = 0;
 
 	//sphere properties
 	float radius = 0;
