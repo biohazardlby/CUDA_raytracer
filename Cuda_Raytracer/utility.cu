@@ -92,6 +92,10 @@ __host__ __device__ float3 operator*(float f, float3 v)
 {
 	return v * f;
 }
+__host__ __device__ float3 operator/(float3 v, float f) {
+	return { v.x / f, v.y / f, v.z / f };
+}
+
 __host__ __device__ float3 operator-(float3 f) {
 	return { -f.x,-f.y,-f.z };
 }
@@ -164,6 +168,44 @@ __host__ __device__ float3 phongShading(
 	float3 diffuse = lambertian * diffuseColor;
 
 	return (specular + diffuse + ambientColor);
+}
+
+__device__ float3 reflect(float3 input_vec, float3 normal) {
+	return input_vec - 2 * dot(input_vec, normal) * normal;
+}
+
+__device__ float3 refract(float3 I, float3 N, float ni, float nt) {
+
+
+	float ior = ni / nt;
+	float cosi =  dot(I, N);
+	float etai = 1, etat = ior;
+	float3 n = N;
+
+	if (cosi < 0) {
+		cosi = -cosi;
+	}
+	else {
+		float temp = etai;
+		etai = etat;
+		etat = temp;
+
+		n = -N;
+	}
+
+	float eta = etai / etat;
+	float k = 1 - eta * eta * (1 - cosi * cosi);
+
+	return k < 0 ? reflect(I,N) : eta * I + (eta * cosi - sqrtf(k)) * n;
+
+
+
+	int sq = 1 - ni * ni * (1 - pow((dot(I, N)), 2)) / (nt * nt);
+	if (sq < 0) {
+		return reflect(I, N);
+	}
+	return ni * (I - N * dot(I, N)) / nt + N * sqrtf(sq);
+
 }
 
 __host__ __device__ float getTime(std::chrono::time_point<std::chrono::steady_clock> time_begin) {

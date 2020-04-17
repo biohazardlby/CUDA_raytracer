@@ -65,12 +65,30 @@ __device__ bool Object::rayTrace(Ray ray, float3 &hit_point, float3 &normal) {
 		float b = 2.0 * dot(oc, ray.direction);
 		float c = dot(oc, oc) - radius * radius;
 		float discriminant = b * b - 4 * a * c;
-		bool hit = (discriminant > 0 && (-b - discriminant > 0));
-		if (hit) {
-			hit_point = ray.origin + ray.direction * ((-b - sqrt(discriminant)) / (2 * a));
+
+		//bool hit = (discriminant > 0 && (-b - discriminant > 0));
+		//if (hit) {
+		//	hit_point = ray.origin + ray.direction * ((-b - sqrt(discriminant)) / (2 * a));
+		//	normal = normalize(hit_point - this->origin);
+		//}
+		//return hit;
+
+		if (discriminant < 0) return false;
+
+		float numerator = -b - sqrt(discriminant);
+		if (numerator > kEpsilon) {
+			hit_point = ray.origin + ray.direction * numerator / (2 * a);
 			normal = normalize(hit_point - this->origin);
+			return true;
 		}
-		return hit;
+
+		numerator = -b + sqrt(discriminant);
+		if (numerator > kEpsilon) {
+			hit_point = ray.origin + ray.direction * numerator / (2 * a);
+			normal = normalize(hit_point - this->origin);
+			return true;
+		}
+		return false;
 		break;
 	}
 	return false;

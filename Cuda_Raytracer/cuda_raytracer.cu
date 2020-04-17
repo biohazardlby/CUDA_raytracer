@@ -58,9 +58,10 @@ void testRender(int nx, int ny, float3* output) {
 }
 
 		
-__device__ int raytrace_object(Ray ray, Object* objects, int object_size, float3 &frag_point, float3 &frag_normal, float &min_dist) {
+__device__ int raytrace_object(Ray ray, Object* objects, int object_size,int skip_index, float3 &frag_point, float3 &frag_normal, float &min_dist) {
 	int hit_idx = -1;
 	for (int i = 0; i < object_size; i++) {
+		if (i == skip_index) continue;
 		Object cur_object = objects[i];
 		float3 hit_point = { 0,0,0 };
 		float3 hit_normal = { 0,0,0 };
@@ -99,45 +100,92 @@ __device__ float3 calculate_light_object(Object* objects, int object_size, int h
 	}
 	return final_color;
 }
-__device__ void dummy(int i) {
+__device__ void recursion(int i) {
 	if (i == 0) return;
-	dummy(i - 1);
+	printf("%d\n", i);
+	recursion(i - 1);
 }
-__device__ float3 illuminate_object(float3 viewPos, Ray ray, Object* objects, int object_size, Light* lights, int light_size, int kd) {
-	dummy(0);
 
+__device__ float3 illuminate_object(float3 viewPos, Ray cam_ray, Object* objects, int object_size, Light* lights, int light_size, int kr, int kt) {
 	float3 frag_point = { 0,0,0 };
 	float3 frag_normal = { 0,0,0 };
 	float3 final_color = { 0,0,0 };
 
+	Ray reflection_ray = cam_ray;
+	Ray refraction_ray = cam_ray;
 	//start with objects color
-	float last_object_reflectiveness = 1;
+
+	float reflectiveness_stack = 1;
+	float transparency_stack = 1;
 	float min_dist = FLT_MAX;
-	int rdr_obj_idx = raytrace_object(ray, objects, object_size, frag_point, frag_normal, min_dist);
+	int rdr_obj_idx = raytrace_object(cam_ray, objects, object_size, -1, frag_point, frag_normal, min_dist);
+
+
 	if (rdr_obj_idx != -1) {
-		final_color = final_color + calculate_light_object(objects, object_size, rdr_obj_idx, frag_point, frag_normal, viewPos, lights, light_size);
-		ray.origin = frag_point;
-		ray.direction = ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal;
-		last_object_reflectiveness *= objects[rdr_obj_idx].reflectiveness;
+		transparency_stack *= 1 - objects[rdr_obj_idx].transparency;
+		final_color = final_color + calculate_light_object(objects, object_size, rdr_obj_idx, frag_point, frag_normal, viewPos, lights, light_size) * transparency_stack;
+		reflectiveness_stack *= objects[rdr_obj_idx].reflectiveness;
+
+		reflection_ray.origin = frag_point;
+		reflection_ray.direction = reflect(cam_ray.direction, frag_normal);
+
+		refraction_ray.origin = frag_point;
+		refraction_ray.direction = refract(cam_ray.direction, frag_normal, 1, objects[rdr_obj_idx].refractive_index);
 	}
 	else {
 		return BG_COLOR;
 	}
+
+	float3 refraction_frag_point = frag_point;
+	float3 refraction_frag_normal = frag_normal;
+
+
 	//after some experience, cuda has very limited stack and recursive function seems to always exceed stack limits for some reason. In this case, I'm using while loop
 	//to calculate the reflection and refraction. 
-	while (kd > 0) {
-		int reflect_obj_idx = raytrace_object(ray, objects, object_size, frag_point, frag_normal, min_dist);
+	//This, however, will result in lack of reflection ray in refraction ray, and refraction ray in reflection ray, until I find what is causing the recursion to fail
+
+	int reflect_obj_idx = rdr_obj_idx;
+	while (kr > 0) {
+		min_dist = FLT_MAX;
+	    reflect_obj_idx = raytrace_object(reflection_ray, objects, object_size, reflect_obj_idx, frag_point, frag_normal, min_dist);
 		if (reflect_obj_idx != -1) {
+			transparency_stack *= 1 - objects[reflect_obj_idx].transparency;
 			float3 added_color = calculate_light_object(objects, object_size, reflect_obj_idx, frag_point, frag_normal, viewPos, lights, light_size);
-			final_color = final_color + added_color * last_object_reflectiveness;
-			ray.origin = frag_point;
-			ray.direction = ray.direction - 2 * dot(ray.direction, frag_normal) * frag_normal;
-			last_object_reflectiveness *= objects[rdr_obj_idx].reflectiveness;
-			kd--;
+			final_color = final_color + added_color * reflectiveness_stack * transparency_stack;
+			reflection_ray.origin = frag_point;
+			reflection_ray.direction = reflect(reflection_ray.direction, frag_normal);
+			reflectiveness_stack *= objects[reflect_obj_idx].reflectiveness;
+			kr--;
 		}
 		else {
-			final_color = final_color + BG_COLOR * last_object_reflectiveness;
+			final_color = final_color + BG_COLOR * reflectiveness_stack;
 			break;
+		}
+	}
+	bool ray_inside = true;
+	transparency_stack *= objects[rdr_obj_idx].transparency;
+	int refraction_obj_idx = rdr_obj_idx;
+	while (kt > 0) {
+		min_dist = FLT_MAX;
+		refraction_obj_idx = raytrace_object(refraction_ray, objects, object_size, -1, refraction_frag_point, refraction_frag_normal, min_dist);
+		if (refraction_obj_idx == -1) {
+			final_color = final_color + BG_COLOR * transparency_stack;
+			break;
+		}
+		else {
+
+			float3 added_color = calculate_light_object(objects, object_size, refraction_obj_idx, refraction_frag_point, refraction_frag_normal, viewPos, lights, light_size);
+
+			final_color = final_color + added_color * transparency_stack;
+			transparency_stack *= objects[refraction_obj_idx].transparency;
+
+			float ni = 1, nt = objects[refraction_obj_idx].refractive_index;
+
+			refraction_ray.origin = refraction_frag_point;
+			refraction_ray.direction = refract(refraction_ray.direction, refraction_frag_normal, ni, nt);
+			ray_inside = !ray_inside;
+
+			kt--;
 		}
 	}
 	return final_color;
@@ -160,7 +208,7 @@ __global__ void cuda_trace_object(Scene* scene, int max_x, int max_y, float scen
 	float3 rayDir = rayEnd - rayOrigin;
 	rayDir = normalize(rayDir);
 	Ray camera_ray = Ray(rayOrigin, rayDir);
-	fb[pixel_index] = illuminate_object(rayOrigin, camera_ray, scene->objects, scene->object_size, scene->lights, scene->light_size, 1);
+	fb[pixel_index] = illuminate_object(rayOrigin, camera_ray, scene->objects, scene->object_size, scene->lights, scene->light_size,2,4);
 }
 __device__ void cuda_create_objects(Scene* scene) {
 
@@ -170,6 +218,8 @@ __device__ void cuda_create_objects(Scene* scene) {
 	s1->color = { .6,.6,0 };
 	s1->shininess = 16;
 	s1->reflectiveness = 0;
+	s1->transparency = 0.5;
+	s1->refractive_index = 1.1;
 
 	Object* s2 = new Object();
 	s2->set_sphere({ 0.5, 0.6, -6 }, .65);
@@ -276,15 +326,24 @@ __global__ void cuda_set_scene(Scene* scene) {
 	scene_screen_ratio = scene->current_cam.filmPlane_width / nx;
 }
 
+__global__ void kernel(int i) {
+	recursion(i);
+}
+
 void init_cuda(int screen_width, int screen_height) {
 	//set stack size
 	size_t max_stack_size;
+
+
 	checkCudaErrors(cudaThreadGetLimit(&max_stack_size, cudaLimitStackSize));
 	checkCudaErrors(cudaDeviceSynchronize());
 	printf("max stack size = %d\n", max_stack_size);
 
 	checkCudaErrors(cudaThreadSetLimit(cudaLimitStackSize, max_stack_size));
 	checkCudaErrors(cudaDeviceSynchronize());
+
+	//kernel << <1, 1 >> > (10);
+	//checkCudaErrors(cudaDeviceSynchronize());
 
 	nx = screen_width;
 	ny = screen_height;

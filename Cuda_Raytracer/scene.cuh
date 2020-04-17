@@ -28,7 +28,7 @@ public:
 	float reflectiveness = 0.2;
 	float shininess = 10;
 
-	float refractive_index = 1;
+	float refractive_index = 0.5;
 	float transparency = 0;
 
 	//sphere properties
