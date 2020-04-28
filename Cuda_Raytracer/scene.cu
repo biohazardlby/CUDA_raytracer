@@ -18,6 +18,11 @@ __host__ __device__ Light::Light(float3 p, float3 c, float3 ac) {
 	color = c;
 	ambientColor = ac;
 }
+__host__ __device__ Light::Light(float3 p, float3 c,float pow, float3 ac) {
+	position = p;
+	color = c*pow;
+	ambientColor = ac;
+}
 
 __device__ Object::Object()
 {
@@ -28,7 +33,7 @@ __device__ Object::~Object()
 
 __device__ bool Object::rayTrace(Ray ray, float3 &hit_point, float3 &normal) {
 	switch (primitive_type) {
-	case TRIANGLE:
+	case OBJECT_TYPE::TRIANGLE:
 		//MOLLER_TRUMBORE 
 		float3 v0v1 = v1 - v0;
 		float3 v0v2 = v2 - v0;
@@ -59,7 +64,7 @@ __device__ bool Object::rayTrace(Ray ray, float3 &hit_point, float3 &normal) {
 		normal = normalize(cross(v0v1, v0v2));
 		return true;
 		break;
-	case SPHERE:
+	case OBJECT_TYPE::SPHERE:
 		float3 oc = ray.origin - this->origin;
 		float a = dot(ray.direction, ray.direction);
 		float b = 2.0 * dot(oc, ray.direction);
@@ -153,12 +158,12 @@ __device__ float3 Object::obj_get_color(float3 frag_point)
 {
 	switch (primitive_type)
 	{
-	case TRIANGLE:
+	case OBJECT_TYPE::TRIANGLE:
 		float u, v, w;
 		barycentric(frag_point, u, v, w);
 		float2 p = a0 * u + a1 * v + a2 * w;
 		return get_checker_color(p.x, p.y);;
-	case SPHERE:
+	case OBJECT_TYPE::SPHERE:
 		return color;
 	}
 }

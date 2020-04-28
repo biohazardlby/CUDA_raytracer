@@ -224,3 +224,8 @@ __host__ __device__ float3 rotateAbout(std::chrono::time_point<std::chrono::stea
 	res_origin.z = rotCenter.z + z_mult * A * cos(2 * PI * f * t + shift);
 	return res_origin;
 }
+
+__host__ __device__ float getLuminance(float3 color)
+{
+	return 0.27 * color.x + 0.67 * color.y + 0.06 * color.z;
+}

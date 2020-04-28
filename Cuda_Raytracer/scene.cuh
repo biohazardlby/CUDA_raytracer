@@ -15,6 +15,8 @@ public:
 	float3 ambientColor = { 0,0,0 };
 	__host__ __device__ Light();
 	__host__ __device__ Light(float3 position, float3 color, float3 ambientColor);
+	__host__ __device__ Light(float3 position, float3 color, float power, float3 ambientColor);
+
 };
 
 

@@ -9,6 +9,8 @@ __managed__ float scene_screen_ratio;
 __managed__ int nx, ny;
 __device__ float3 BG_COLOR = { 0.8,0.8,0.8 };
 
+int tx = 16;
+int ty = 16;
 
 __device__ std::chrono::time_point<std::chrono::steady_clock> time_begin;
 
@@ -34,8 +36,6 @@ __global__ void test(float3* fb, int max_x, int max_y) {
 
 void testRender(int nx, int ny, float3* output) {
 
-	int tx = 8;
-	int ty = 8;
 
 	int num_pixels = nx * ny;
 	cuda_fb_size = 3 * num_pixels * sizeof(float3);
@@ -194,7 +194,7 @@ __global__ void cuda_trace_object(Scene* scene, int max_x, int max_y, float scen
 	int sx = threadIdx.x + blockIdx.x * blockDim.x;
 	int sy = threadIdx.y + blockIdx.y * blockDim.y;
 	if ((sx >= max_x) || (sy >= max_y)) return;
-	int pixel_index = sy * max_x * 3 + sx * 3;
+	int pixel_index = sy * max_x  + sx ;
 
 	Camera cam = scene->current_cam;
 
@@ -262,51 +262,10 @@ __device__ void cuda_create_objects(Scene* scene) {
 	scene->addObject(*t1);
 	scene->addObject(*t2);
 
-	Light light1 = Light({ -8,4,6 }, { .4,.1,.05 }, { .05,0,0 });
-	Light light2 = Light({ 3,12, 1 }, { .1,.15,.4 }, { 0,0,0.07 });
+	Light light1 = Light({ -8,4,6 }, { .4,.1,.05 },50, { .05,0,0 });
+	Light light2 = Light({ 3,12, 1 }, { .1,.15,.4 },50, { 0,0,0.07 });
 	scene->addLight(light2);
 	scene->addLight(light1);
-
-	//legacy objects
-	/*
-Sphere* sphere1 = new Sphere();
-sphere1->origin = { -0.5, 1 ,-4 };
-sphere1->radius = 0.85;
-sphere1->color = { 0.0,0.6,.6 };
-sphere1->shininess = 16;
-
-Sphere* sphere2 = new Sphere();
-sphere2->origin = { 0.5, 0.6, -6 };
-sphere2->radius = .65;
-sphere2->color = { .4,.4,.4 };
-sphere2->shininess = 50;
-
-scene->addSphere(*sphere1);
-scene->addSphere(*sphere2);
-
-Triangle* triangle1 = new Triangle(
-	quad_v1,
-	quad_v3,
-	quad_v2,
-	{ 0,1 },
-	{ 1,0 },
-	{ 1,1 }
-);
-triangle1->color = { 0, 1, 0 };
-Triangle* triangle2 = new Triangle(
-	quad_v1,
-	quad_v4,
-	quad_v3,
-	{ 0,1 },
-	{ 0,0 },
-	{ 1,0 }
-);
-triangle2->color = {1, 0, 0 };
-
-scene->addTriangle(*triangle1);
-scene->addTriangle(*triangle2);
-
-*/
 
 }
 
@@ -331,24 +290,12 @@ __global__ void kernel(int i) {
 }
 
 void init_cuda(int screen_width, int screen_height) {
-	//set stack size
-	size_t max_stack_size;
 
-
-	checkCudaErrors(cudaThreadGetLimit(&max_stack_size, cudaLimitStackSize));
-	checkCudaErrors(cudaDeviceSynchronize());
-	printf("max stack size = %d\n", max_stack_size);
-
-	checkCudaErrors(cudaThreadSetLimit(cudaLimitStackSize, max_stack_size));
-	checkCudaErrors(cudaDeviceSynchronize());
-
-	//kernel << <1, 1 >> > (10);
-	//checkCudaErrors(cudaDeviceSynchronize());
 
 	nx = screen_width;
 	ny = screen_height;
 
-	cuda_fb_size = 3 * nx * ny * sizeof(float3);
+	cuda_fb_size = nx * ny * sizeof(float3);
 	checkCudaErrors(cudaMalloc(&cuda_scene_ptr, sizeof(Scene)));
 	checkCudaErrors(cudaMalloc(&cuda_fb_ptr, cuda_fb_size));
 
@@ -371,8 +318,7 @@ __global__ void cuda_test_pos(Scene* scene, float t) {
 }
 
 void cuda_update(float3* output) {
-	int tx = 8;
-	int ty = 8;
+
 	cuda_test_pos << <1, 1 >> > (cuda_scene_ptr, getTime(time_begin));
 	checkCudaErrors(cudaDeviceSynchronize());
 	dim3 blocks(nx / tx + 1, ny / ty + 1);

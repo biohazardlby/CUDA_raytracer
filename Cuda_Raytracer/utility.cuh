@@ -17,8 +17,11 @@ public:
 	}
 };
 
-enum OBJECT_TYPE {
+enum class OBJECT_TYPE {
 	SPHERE, TRIANGLE
+};
+enum class TR_TYPE {
+	WARD, REINHARD
 };
 
 __host__ __device__ float rad_2_deg(float rad);
@@ -62,10 +65,4 @@ __device__ float3 refract(float3 input_vec, float3 normal, float ni, float nt);
 __host__ __device__ float getTime(std::chrono::time_point<std::chrono::steady_clock> time_begin);
 __host__ __device__ float3 rotateAbout(std::chrono::time_point<std::chrono::steady_clock> time_begin, float3 rotCenter, float3& origin, float A, float f, float shift, float x_mult, float y_mult, float z_mult);
 
-template<class T>
-__host__ __device__ void swap(T &t1, T &t2)
-{
-	T temp = t2;
-	t2 = t1;
-	t1 = temp;
-}
+__host__ __device__ float getLuminance(float3 color);

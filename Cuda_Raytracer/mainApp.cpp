@@ -14,9 +14,59 @@ Scene* scene_ptr;
 
 
 int num_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
-size_t fb_size = 3 * num_pixels * sizeof(float3);
+size_t fb_size =  num_pixels * sizeof(float3);
 float3* fb = (float3*)malloc(fb_size);
 
+void tonReproduction(float3* pixels, TR_TYPE type, float LdMax) {
+	float* luminance = new float[num_pixels];
+	float La = 0;
+	for (int i = 0; i < num_pixels; i++) {
+		luminance[i] = getLuminance(pixels[i]);
+		La = log(0.001 + luminance[i]);
+	}
+	La = exp(La / num_pixels);
+	switch (type)
+	{
+	case TR_TYPE::WARD:
+	{
+		float numerator = 1.219 + powf(LdMax / 2, 0.4);
+		float denominator = 1.219 + powf(La, 0.4);
+		float sf = powf(numerator / denominator, 2.5);
+		for (int i = 0; i < num_pixels; i++) {
+			pixels[i] = pixels[i] * sf;
+		}
+	}
+	break;
+	case TR_TYPE::REINHARD:
+	{
+		float a = 0.18;
+		for (int i = 0; i < num_pixels; i++) {
+			float Rs = a * pixels[i].x / La;
+			float Gs = a * pixels[i].y / La;
+			float Bs = a * pixels[i].z / La;
+
+
+			float Rr = Rs / (1 + Rs);
+			float Gr = Gs / (1 + Gs);
+			float Br = Bs / (1 + Bs);
+
+
+			pixels[i].x = Rr * LdMax;
+			pixels[i].y = Gr * LdMax;
+			pixels[i].z = Br * LdMax;
+
+
+			//float Ls = a * luminance[i] / La;
+			//float Lr = Ls / (1 + Ls);
+			//pixels[i] = pixels[i] * Lr;
+
+		}
+		break;
+	}
+	}
+	delete[] luminance;
+	luminance = NULL;
+}
 
 void render_loop()
 {
@@ -25,11 +75,11 @@ void render_loop()
 	glPointSize(1);
 
 	cuda_update(fb);
-	//testRender(SCREEN_WIDTH, SCREEN_HEIGHT, fb);
+	tonReproduction(fb, TR_TYPE::REINHARD, 1.0);
 
 	for (int sy = 0; sy < SCREEN_HEIGHT; sy++) {
 		for (int sx = 0; sx < SCREEN_WIDTH; sx++) {
-			int pixel_index = sy * 3 * SCREEN_WIDTH + sx * 3;
+			int pixel_index = sy *  SCREEN_WIDTH + sx ;
 			float r = fb[pixel_index].x;
 			float g = fb[pixel_index].y;
 			float b = fb[pixel_index].z;
