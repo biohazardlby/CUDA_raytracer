@@ -2,8 +2,9 @@
 
 #define checkCudaErrors(val) check_cuda( (val), #val, __FILE__, __LINE__ )
 
+__managed__ Scene* cuda_scene_ptr;
 __device__ float3* cuda_fb_ptr;
-__device__ Scene* cuda_scene_ptr;
+
 __device__ size_t cuda_fb_size;
 __managed__ float scene_screen_ratio;
 __managed__ int nx, ny;
@@ -57,6 +58,7 @@ void testRender(int nx, int ny, float3* output) {
 	checkCudaErrors(cudaFree(fb));
 }
 
+
 		
 __device__ int raytrace_object(Ray ray, Object* objects, int object_size,int skip_index, float3 &frag_point, float3 &frag_normal, float &min_dist) {
 	int hit_idx = -1;
@@ -82,7 +84,7 @@ __device__ float3 calculate_light_object(Object* objects, int object_size, int h
 	Object hit_object = objects[hit_object_idx];
 	for (int light_idx = 0; light_idx < light_size; light_idx++) {
 		Light cur_light = lights[light_idx];
-		Ray light_ray = Ray(frag_point, cur_light.position);
+		Ray light_ray = Ray(frag_point, cur_light.get_position());
 		float3 block_point = { 0,0,0 };
 		float3 block_normal = { 0,0,0 };
 		bool blocked = false;
@@ -95,7 +97,7 @@ __device__ float3 calculate_light_object(Object* objects, int object_size, int h
 			}
 		}
 		if (!blocked) {
-			final_color = final_color + phongShading(cur_light.position, frag_normal, frag_point, viewPos, cur_light.color, cur_light.ambientColor, hit_object.obj_get_color(frag_point), hit_object.shininess);
+			final_color = final_color + phongShading(cur_light.get_position(), frag_normal, frag_point, viewPos, cur_light.get_color(), cur_light.get_ambient_color(), hit_object.obj_get_color(frag_point), hit_object.shininess);
 		}
 	}
 	return final_color;
@@ -262,11 +264,10 @@ __device__ void cuda_create_objects(Scene* scene) {
 	scene->addObject(*t1);
 	scene->addObject(*t2);
 
-	Light light1 = Light({ -8,4,6 }, { .4,.1,.05 },50, { .05,0,0 });
-	Light light2 = Light({ 3,12, 1 }, { .1,.15,.4 },50, { 0,0,0.07 });
+	Light light1 = Light({ -8,4,6 }, { .4,.1,.05 },0.5, { .05,0,0 });
+	Light light2 = Light({ 3,12, 1 }, { .1,.15,.4 },0.5, { 0,0,0.07 });
 	scene->addLight(light2);
 	scene->addLight(light1);
-
 }
 
 __global__ void cuda_set_scene(Scene* scene) {
@@ -280,14 +281,10 @@ __global__ void cuda_set_scene(Scene* scene) {
 		1000,						//rayTrace plane distance to camera
 		60						    //angle of view
 	);
-
 	cuda_create_objects(scene);
 	scene_screen_ratio = scene->current_cam.filmPlane_width / nx;
 }
 
-__global__ void kernel(int i) {
-	recursion(i);
-}
 
 void init_cuda(int screen_width, int screen_height) {
 
@@ -326,4 +323,16 @@ void cuda_update(float3* output) {
 	cuda_trace_object << <blocks, threads >> > (cuda_scene_ptr, nx, ny, scene_screen_ratio, cuda_fb_ptr);
 	checkCudaErrors(cudaDeviceSynchronize());
 	cudaMemcpy(output, cuda_fb_ptr, cuda_fb_size, cudaMemcpyDeviceToHost);
+}
+
+__global__ void cuda_add_light_power(float amount)
+{
+	for (int i = 0; i < cuda_scene_ptr->light_size; i++) {
+		cuda_scene_ptr->lights[i].set_power(cuda_scene_ptr->lights[i].get_power() + amount);
+	}
+}
+
+void add_light_power(float amount) {
+	cuda_add_light_power << <1, 1 >> > (amount);
+	checkCudaErrors(cudaDeviceSynchronize());
 }

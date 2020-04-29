@@ -5,7 +5,11 @@
 #include <cublas.h>
 #include <iostream>
 
+
+
+
 void testRender(int nx, int ny, float3* fb);
 void cuda_update(float3* output);
+void add_light_power(float amount);
 void init_cuda(int screen_width, int screen_height);
 void free_cuda();

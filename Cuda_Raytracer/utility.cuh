@@ -21,7 +21,7 @@ enum class OBJECT_TYPE {
 	SPHERE, TRIANGLE
 };
 enum class TR_TYPE {
-	WARD, REINHARD
+	WARD, REINHARD, DUMMY
 };
 
 __host__ __device__ float rad_2_deg(float rad);
@@ -48,10 +48,6 @@ __host__ __device__ float2 operator*(float2 v1, float f);
 __host__ __device__ float2 operator/(float2 v1, float f);
 
 __host__ __device__ mat4x4 mtx_gen_translate(float x, float y, float z);
-
-template<typename T>
-__host__ __device__ void swap(T &t1, T &t2);
-
 
 __host__ __device__ float dot(float3 v1, float3 v2);
 __host__ __device__ float3 cross(float3 v1, float3 v2);

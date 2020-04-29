@@ -10,21 +10,23 @@
 GLFWwindow* window;
 int SCREEN_WIDTH = 1600;
 int SCREEN_HEIGHT = 800;
-Scene* scene_ptr;
+float LdMax = 1;
+TR_TYPE TR_method = TR_TYPE::WARD;
 
 
 int num_pixels = SCREEN_WIDTH * SCREEN_HEIGHT;
 size_t fb_size =  num_pixels * sizeof(float3);
 float3* fb = (float3*)malloc(fb_size);
+float* luminance = (float*)malloc(num_pixels * sizeof(float));
 
-void tonReproduction(float3* pixels, TR_TYPE type, float LdMax) {
-	float* luminance = new float[num_pixels];
+void tone_reproduction(float3* pixels, TR_TYPE type, float LdMax) {
 	float La = 0;
 	for (int i = 0; i < num_pixels; i++) {
 		luminance[i] = getLuminance(pixels[i]);
-		La = log(0.001 + luminance[i]);
+		La +=  log(0.001 + luminance[i]);
 	}
 	La = exp(La / num_pixels);
+
 	switch (type)
 	{
 	case TR_TYPE::WARD:
@@ -64,8 +66,19 @@ void tonReproduction(float3* pixels, TR_TYPE type, float LdMax) {
 		break;
 	}
 	}
-	delete[] luminance;
-	luminance = NULL;
+}
+
+void key_callBack(GLFWwindow* window, int key, int scancode, int action, int mod) {
+	if (key == GLFW_KEY_T && action == GLFW_PRESS) {
+		TR_method = static_cast<TR_TYPE>((static_cast<int>(TR_method) + 1) % (static_cast<int>(TR_TYPE::DUMMY)));
+		printf("%d", static_cast<int>(TR_method));
+	}
+	if (key == GLFW_KEY_KP_ADD && action == GLFW_PRESS) {
+		add_light_power(10);
+	}
+	if (key == GLFW_KEY_KP_SUBTRACT && action == GLFW_PRESS) {
+		add_light_power(-10);
+	}
 }
 
 void render_loop()
@@ -75,7 +88,7 @@ void render_loop()
 	glPointSize(1);
 
 	cuda_update(fb);
-	tonReproduction(fb, TR_TYPE::REINHARD, 1.0);
+	tone_reproduction(fb, TR_method, LdMax);
 
 	for (int sy = 0; sy < SCREEN_HEIGHT; sy++) {
 		for (int sx = 0; sx < SCREEN_WIDTH; sx++) {
@@ -108,39 +121,6 @@ void setup_viewport() {
 	glOrtho(0.0, SCREEN_WIDTH, 0.0, SCREEN_HEIGHT, 0.0, 1.0); 
 
 }
-//void construct_scene() {
-//	scene_ptr = new Scene();
-//	scene_ptr->current_cam.setCamera(
-//		{ -1.103, 1.312, 4 },		//position
-//		{ -1.256, 1.026, -3.945 },	//LookAt
-//		{ -1.103, 2.325, 4 },		//up
-//		SCREEN_WIDTH,				//width
-//		SCREEN_HEIGHT,				//height
-//		1000,						//rayTrace plane distance to camera
-//		60						//angle of view
-//	);
-//
-//	Sphere* sphere1 = new Sphere();
-//	sphere1->origin = { -0.5, 1 ,-5 };
-//	sphere1->radius = 0.85;
-//	sphere1->color = { 0.0,0.0,.6 };
-//	sphere1->shininess = 16;
-//
-//	Sphere* sphere2 = new Sphere();
-//	sphere2->origin = { 0.5, 0.6, -6 };
-//	sphere2->radius = .65;
-//	sphere2->color = { .8,.8,.8 };
-//	sphere2->shininess = 50;
-//
-//	scene_ptr->addSphere(*sphere1);
-//	scene_ptr->addSphere(*sphere2);
-//
-//	Light light1 = Light({ 100,100,-2 }, { .7,.4,.05 }, { .05,0,0 });
-//	scene_ptr->addLight(light1);
-//	Light light2 = Light({ 20,120, 1 }, { .1,.15,.4 }, { 0,0,.05 });
-//	scene_ptr->addLight(light2);
-//
-//}
 
 int main(int argc, char* argv[])
 {
@@ -155,6 +135,7 @@ int main(int argc, char* argv[])
 	setup_viewport();
 
 	init_cuda( SCREEN_WIDTH, SCREEN_HEIGHT);
+	glfwSetKeyCallback(window, key_callBack);
 
 	// Main loop
 	while (!glfwWindowShouldClose(window))

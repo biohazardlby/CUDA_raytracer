@@ -20,8 +20,32 @@ __host__ __device__ Light::Light(float3 p, float3 c, float3 ac) {
 }
 __host__ __device__ Light::Light(float3 p, float3 c,float pow, float3 ac) {
 	position = p;
-	color = c*pow;
+	color = c;
 	ambientColor = ac;
+}
+
+__host__ __device__ float3 Light::get_color()
+{
+	return color * power;
+}
+
+__host__ __device__ float3 Light::get_ambient_color()
+{
+	return  ambientColor;
+}
+
+__host__ __device__ float3 Light::get_position()
+{
+	return position;
+}
+
+__host__ __device__ float Light::get_power() {
+	return power;
+}
+
+__host__ __device__ void Light::set_power(float p)
+{
+	power = p;
 }
 
 __device__ Object::Object()

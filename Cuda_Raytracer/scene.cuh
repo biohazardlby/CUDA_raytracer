@@ -10,13 +10,19 @@ public:
 };
 class Light {
 public:
-	float3 position = { 0,0,0 };
-	float3 color = { 0,0,0 };
-	float3 ambientColor = { 0,0,0 };
 	__host__ __device__ Light();
 	__host__ __device__ Light(float3 position, float3 color, float3 ambientColor);
 	__host__ __device__ Light(float3 position, float3 color, float power, float3 ambientColor);
-
+	__host__ __device__ float3 get_color();
+	__host__ __device__ float3 get_ambient_color();
+	__host__ __device__ float3 get_position();
+	__host__ __device__ float get_power();
+	__host__ __device__ void set_power(float power);
+private:
+	float3 position = { 0,0,0 };
+	float3 color = { 0,0,0 };
+	float3 ambientColor = { 0,0,0 };
+	float power = 1.0;
 };
 
 
