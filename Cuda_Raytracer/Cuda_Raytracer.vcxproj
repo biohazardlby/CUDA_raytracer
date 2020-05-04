@@ -106,7 +106,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(lib-OpenGL)\glew-2.1.0\include;$(lib-OpenGL)\glfw-3.3.2\include;$(lib-OpenGL)\glm;C:\ProgramData\NVIDIA Corporation\CUDA Samples\v10.2\common\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(lib-OpenGL)\glew-2.1.0\include;$(lib-OpenGL)\glfw-3.3.2\include;C:\ProgramData\NVIDIA Corporation\CUDA Samples\v10.2\common\inc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

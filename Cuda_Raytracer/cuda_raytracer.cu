@@ -400,15 +400,15 @@ __global__ void cuda_generate_sphere(Object* sphere) {
 void generate_sphere()
 {
 	Object* sphere = new Object;
-	float x = 2 - random_float() * 4;
+	float x = 4 - random_float() * 8;
 	float y = 4 + random_float() * 3;
-	float z = -5 - random_float() * 4;
+	float z = -5 - 2 + random_float() * 4;
 
 	float radius = 0.1 + random_float() * 0.3 + 0.25;
 	sphere->SetSphere({ x,y,z }, radius);
 
-	sphere->color = { random_float(), random_float(), random_float() };
-	sphere->shininess = random_float();
+	sphere->color = { random_float()*0.6f, random_float()*0.6f, random_float()*0.6f };
+	sphere->shininess = 10 + 90 * random_float();
 	sphere->transparency = random_float();
 	sphere->reflectiveness = random_float();
 	sphere->refractive_index = random_float();

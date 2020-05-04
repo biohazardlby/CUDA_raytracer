@@ -3,6 +3,12 @@ ray tracer using CUDA for class CSCI-711
 
 Current progress video: https://www.youtube.com/watch?v=bIqZGtwRsuo&feature=youtu.be
 
+Build with visual sutdio:
+	Dependencies:
+		glew-2.1.0
+		glfw-3.3.2
+		cuda-10.2
+	
 
 Known Issue: 
 

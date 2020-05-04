@@ -57,11 +57,6 @@ void tone_reproduction(float3* pixels, TR_TYPE type, float LdMax) {
 			pixels[i].y = Gr * LdMax;
 			pixels[i].z = Br * LdMax;
 
-
-			//float Ls = a * luminance[i] / La;
-			//float Lr = Ls / (1 + Ls);
-			//pixels[i] = pixels[i] * Lr;
-
 		}
 		break;
 	}
@@ -75,10 +70,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 	}
 	//modify light
 	if (key == GLFW_KEY_KP_ADD && action == GLFW_PRESS) {
-		add_light_power(10);
+		add_light_power(0.5);
 	}
 	if (key == GLFW_KEY_KP_SUBTRACT && action == GLFW_PRESS) {
-		add_light_power(-10);
+		add_light_power(-0.5);
 	}
 	if (key == GLFW_KEY_S && action == GLFW_PRESS) {
 		generate_sphere();
