@@ -5,9 +5,10 @@ Current progress video: https://www.youtube.com/watch?v=bIqZGtwRsuo&feature=yout
 
 Build with visual sutdio:
 	Dependencies:
-		glew-2.1.0
-		glfw-3.3.2
-		cuda-10.2
+	
+		-glew-2.1.0
+		-glfw-3.3.2
+		-cuda-10.2
 	
 
 Known Issue: 
