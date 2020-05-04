@@ -1,5 +1,6 @@
 #include "utility.cuh"
 
+#define MAX_OBJECT_SIZE 50
 class Ray {
 public:
 	float3 origin = { 0,0,0 };
@@ -43,43 +44,30 @@ public:
 	float radius = 0;
 
 	//triangle properties
-	float2 a0 = { 0,0 }, a1 = { 0,0 }, a2 = { 0,0 };
 	float3 v0 = { 0,0,0 }, v1 = { 0,0,0 }, v2 = { 0,0,0 };
+
+	//physics
+	float3 accel = { 0,0,0 };
+	float3 speed = { 0,0,0 };
+	float3 weight;
+
+	__host__ __device__ Object();
+	__host__ __device__ ~Object();
+	__host__ __device__ bool Raytrace(Ray ray, float3& hit_point, float3& normal);
+	__host__ __device__ void SetSphere(float3 origin, float radius);
+	__host__ __device__ void SetTriangle(float3 vtx0, float3 vtx1, float3 vtx2, float2 anchor0, float2 anchor1, float2 anchor2);
+	__host__ __device__ float3 GetColor(float3 frag_point);
+	
+private:
+	//triangle properties
+	float2 a0 = { 0,0 }, a1 = { 0,0 }, a2 = { 0,0 };
 	float checker_scale = 3;
 	float3 checker_color_1 = { 0.5,0.5,0.2 };
 	float3 checker_color_2 = { 0.2,0.5,0.5 };
 
-	__device__ Object();
-	__device__ ~Object();
-	__device__ bool rayTrace(Ray ray, float3& hit_point, float3& normal);
-	__device__ void set_sphere(float3 origin, float radius);
-	__device__ void set_triangle(float3 vtx0, float3 vtx1, float3 vtx2, float2 anchor0, float2 anchor1, float2 anchor2);
-	__device__ float3 obj_get_color(float3 frag_point);
-private:
-	__device__ float3 get_checker_color(float x, float y);
-	__device__ void barycentric(float3 frag_point, float& u, float& v, float& w);
-};
 
-class Sphere : public Object {
-public:
-	__device__ bool rayTrace(Ray ray, float3& hit_point, float3& normal);
-	__device__ float3 get_color(float3 frag_point);
-};
-
-class Triangle : public Object {
-public:
-	float checker_scale = 3;
-	float3 checker_color_1 = {0.5,0.5,0.2};
-	float3 checker_color_2 = {0.2,0.5,0.5};
-
-	__device__ Triangle();
-	__device__ Triangle(float3 vtx0, float3 vtx1, float3 vtx2);
-	__device__ Triangle(float3 vtx0, float3 vtx1, float3 vtx2, float2 anchor1, float2 anchor2, float2 anchor3);
-	__device__ bool rayTrace(Ray ray, float3& hit_point, float3& normal);
-	__device__ float3 get_color(float3 frag_point);
-private:
-	__device__ float3 get_checker_color(float x, float y);
-	__device__ void barycentric(float3 frag_point, float& u, float& v, float& w);
+	__device__ float3 GetCheckerColor(float x, float y);
+	__device__ void Barycentric(float3 frag_point, float& u, float& v, float& w);
 };
 
 class Camera {
@@ -102,12 +90,10 @@ public:
 };
 class Scene {
 public:
-	Object objects[10];
+
+	Object objects[MAX_OBJECT_SIZE];
 	int object_size = 0;
-	Sphere spheres[10];
-	int sphere_size = 0;
-	Triangle triangles[10];
-	int triangle_size = 0;
+
 	Light lights[10];
 	int light_size = 0;
 	Camera current_cam = Camera(
@@ -124,7 +110,6 @@ public:
 	__host__ __device__ ~Scene();
 
 	__host__ __device__ void addObject(Object& object);
-	__host__ __device__ void addSphere(Sphere& sphere);
-	__host__ __device__ void addTriangle(Triangle& triangle);
+
 	__host__ __device__ void addLight(Light& light);
 };

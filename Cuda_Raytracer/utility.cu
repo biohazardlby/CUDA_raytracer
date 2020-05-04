@@ -170,7 +170,8 @@ __host__ __device__ float3 phongShading(
 	return (specular + diffuse + ambientColor);
 }
 
-__device__ float3 reflect(float3 input_vec, float3 normal) {
+//n must be normalized
+__host__ __device__ float3 reflect(float3 input_vec, float3 normal) {
 	return input_vec - 2 * dot(input_vec, normal) * normal;
 }
 
@@ -228,4 +229,9 @@ __host__ __device__ float3 rotateAbout(std::chrono::time_point<std::chrono::stea
 __host__ __device__ float getLuminance(float3 color)
 {
 	return 0.27 * color.x + 0.67 * color.y + 0.06 * color.z;
+}
+
+__host__ __device__ float random_float()
+{
+	return (float)rand() / RAND_MAX;
 }

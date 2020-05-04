@@ -4,12 +4,16 @@
 
 __managed__ Scene* cuda_scene_ptr;
 __device__ float3* cuda_fb_ptr;
+Scene* scene_ptr = (Scene*)malloc(sizeof(Scene));
 
 __device__ size_t cuda_fb_size;
 __managed__ float scene_screen_ratio;
 __managed__ int nx, ny;
 __device__ float3 BG_COLOR = { 0.8,0.8,0.8 };
+__managed__ float3 GRAVITY = { 0,-9.8,0 };
+__managed__ float FLOOR_LEVEL = -1.5;
 
+float last_frame_time = 0;
 int tx = 16;
 int ty = 16;
 
@@ -27,39 +31,6 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
 }
 
 
-__global__ void test(float3* fb, int max_x, int max_y) {
-	int i = threadIdx.x + blockIdx.x * blockDim.x;
-	int j = threadIdx.y + blockIdx.y * blockDim.y;
-	if ((i >= max_x) || (j >= max_y)) return;
-	int pixel_index = j * max_x * 3 + i * 3;
-	fb[pixel_index] = { float(i) / max_x,float(j) / max_y,.2 };
-}
-
-void testRender(int nx, int ny, float3* output) {
-
-
-	int num_pixels = nx * ny;
-	cuda_fb_size = 3 * num_pixels * sizeof(float3);
-
-	// allocate FB
-	float3* fb;
-	checkCudaErrors(cudaMallocManaged((void**)&fb, cuda_fb_size));
-
-	dim3 blocks(nx / tx + 1, ny / ty + 1);
-	dim3 threads(tx, ty);
-	test << <blocks, threads >> > (fb, nx, ny);
-	checkCudaErrors(cudaGetLastError());
-	checkCudaErrors(cudaDeviceSynchronize());
-
-
-	// Output FB 
-	cudaMemcpy(output, fb, cuda_fb_size, cudaMemcpyDeviceToHost);
-
-	checkCudaErrors(cudaFree(fb));
-}
-
-
-		
 __device__ int raytrace_object(Ray ray, Object* objects, int object_size,int skip_index, float3 &frag_point, float3 &frag_normal, float &min_dist) {
 	int hit_idx = -1;
 	for (int i = 0; i < object_size; i++) {
@@ -67,7 +38,7 @@ __device__ int raytrace_object(Ray ray, Object* objects, int object_size,int ski
 		Object cur_object = objects[i];
 		float3 hit_point = { 0,0,0 };
 		float3 hit_normal = { 0,0,0 };
-		if (cur_object.rayTrace(ray, hit_point, hit_normal)) {
+		if (cur_object.Raytrace(ray, hit_point, hit_normal)) {
 			float dist = length(hit_point - ray.origin);
 			if (dist <= min_dist) {
 				min_dist = dist;
@@ -91,13 +62,13 @@ __device__ float3 calculate_light_object(Object* objects, int object_size, int h
 		for (int blocker_idx = 0; blocker_idx < object_size; blocker_idx++) {
 			if (blocker_idx == hit_object_idx) continue;
 			Object block_object = objects[blocker_idx];
-			if (block_object.rayTrace(light_ray, block_point, block_normal)) {
+			if (block_object.Raytrace(light_ray, block_point, block_normal)) {
 				blocked = true;
 				break;
 			}
 		}
 		if (!blocked) {
-			final_color = final_color + phongShading(cur_light.get_position(), frag_normal, frag_point, viewPos, cur_light.get_color(), cur_light.get_ambient_color(), hit_object.obj_get_color(frag_point), hit_object.shininess);
+			final_color = final_color + phongShading(cur_light.get_position(), frag_normal, frag_point, viewPos, cur_light.get_color(), cur_light.get_ambient_color(), hit_object.GetColor(frag_point), hit_object.shininess);
 		}
 	}
 	return final_color;
@@ -216,7 +187,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 
 
 	Object* s1 = new Object();
-	s1->set_sphere({ -0.5, 1 ,-4 }, 0.85);
+	s1->SetSphere({ -0.5, 1 ,-4 }, 0.85);
 	s1->color = { .6,.6,0 };
 	s1->shininess = 16;
 	s1->reflectiveness = 0;
@@ -224,7 +195,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 	s1->refractive_index = 1.1;
 
 	Object* s2 = new Object();
-	s2->set_sphere({ 0.5, 0.6, -6 }, .65);
+	s2->SetSphere({ 0.5, 0.6, -6 }, .65);
 	s2->color = { 0,.4,.4 };
 	s2->shininess = 50;
 	s2->reflectiveness = .4;
@@ -232,7 +203,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 	scene->addObject(*s1);
 	scene->addObject(*s2);
 
-	float quad_y_offset = -1.5;
+	float quad_y_offset = FLOOR_LEVEL;
 	float quad_length = 6;
 	float quad_x_offset = 0;
 	float quad_z_offset = -5;
@@ -244,7 +215,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 
 
 	Object* t1 = new Object();
-	t1->set_triangle(
+	t1->SetTriangle(
 		quad_v1,
 		quad_v3,
 		quad_v2,
@@ -253,7 +224,7 @@ __device__ void cuda_create_objects(Scene* scene) {
 		{ 1,1 }
 	);
 	Object* t2 = new Object();
-	t2->set_triangle(
+	t2->SetTriangle(
 		quad_v1,
 		quad_v4,
 		quad_v3,
@@ -288,7 +259,6 @@ __global__ void cuda_set_scene(Scene* scene) {
 
 void init_cuda(int screen_width, int screen_height) {
 
-
 	nx = screen_width;
 	ny = screen_height;
 
@@ -298,7 +268,6 @@ void init_cuda(int screen_width, int screen_height) {
 
 	cuda_set_scene << <1, 1 >> > (cuda_scene_ptr);
 	checkCudaErrors(cudaDeviceSynchronize());
-
 	time_begin = std::chrono::high_resolution_clock::now();
 }
 
@@ -307,22 +276,149 @@ void free_cuda() {
 	checkCudaErrors(cudaFree(cuda_fb_ptr));
 }
 
-__global__ void cuda_test_pos(Scene* scene, float t) {
-	float A = 1;
-	float f = 1;
-	float shift = .5;
-	scene->objects[0].origin.y = 0.5 + 0.5 * sin(2 * PI * f * t / 5000 + shift);
+
+bool check_collision(Object* objects, int idx_1, int idx_2) {
+	Object& o1 = objects[idx_1];
+	Object& o2 = objects[idx_2];
+	float floor_bounce = 0.9;
+	float R = 0.8;
+	if (o1.primitive_type == OBJECT_TYPE::SPHERE && o2.primitive_type == OBJECT_TYPE::SPHERE) {
+
+		float3 vecd = o1.origin - o2.origin;
+		float distance = length(vecd);
+		float sum_radius = o1.radius + o2.radius;
+		if (distance <= sum_radius) {
+
+			float3 U1x, U1y, U2x, U2y, V1x, V1y, V2x, V2y;
+			float m1, m2, x1, x2;
+			float3 v1temp, v1, v2, v1x, v2x, v1y, v2y, x(o1.origin - o2.origin);
+
+			x = normalize(x);
+			v1 = o1.speed;
+			x1 = dot(x,v1);
+			v1x = x * x1;
+			v1y = v1 - v1x;
+			m1 = o1.radius * 5;
+
+			x = x * -1;
+			v2 = o2.speed;
+			x2 = dot(x,v2);
+			v2x = x * x2;
+			v2y = v2 - v2x;
+			m2 = o2.radius * 5;
+
+			o1.speed = float3(v1x * (m1 - m2) / (m1 + m2) + v2x * (2 * m2) / (m1 + m2) + v1y);
+			o2.speed = float3(v1x * (2 * m1) / (m1 + m2) + v2x * (m2 - m1) / (m1 + m2) + v2y);
+
+			o1.origin = o1.origin - (x * (sum_radius - distance + kEpsilon));
+			o2.origin = o2.origin + (x * (sum_radius - distance + kEpsilon));
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+	else if (o1.primitive_type == OBJECT_TYPE::SPHERE) {
+		if ((o1.origin.y - o1.radius) < FLOOR_LEVEL) {
+			o1.speed.y = -o1.speed.y * floor_bounce;
+			o1.origin.y = o1.radius + FLOOR_LEVEL + kEpsilon;
+			return true;
+		}
+	}
+	else if (o2.primitive_type == OBJECT_TYPE::SPHERE) {
+
+		if (o2.origin.y - o2.radius < FLOOR_LEVEL){
+			o2.speed.y = -o2.speed.y * floor_bounce;
+			o2.origin.y = o2.radius + FLOOR_LEVEL + kEpsilon;
+			return true;
+		}
+	}
+	return false;
+}
+
+void solve_movement(Object* objects, int object_size, int t_idx, float deltaTime) {
+
+	Object& cur_object = objects[t_idx];
+	//only sphere movement for now
+	if (cur_object.primitive_type == OBJECT_TYPE::TRIANGLE) return;
+	float3 last_position = cur_object.origin;
+
+	cur_object.origin = cur_object.origin + cur_object.speed * deltaTime / 1000;
+
+	//check if the destiny collide
+	for (int i = 0; i < object_size; i++) {
+		if (i == t_idx) continue;
+		check_collision(objects, i, t_idx);
+	}
+}
+
+void update_position(Scene& scene, float deltaTime) {
+
+	for (int i = 0; i < scene.object_size; i++) {
+		Object& cur_obj = scene.objects[i];
+		cur_obj.speed = cur_obj.speed + cur_obj.accel * deltaTime;
+	}
+	for (int i = 0; i < scene.object_size; i++) {
+		solve_movement(scene.objects, scene.object_size, i, deltaTime);
+	}
+}
+void apply_accel(Scene& scene) {
+	for (int i = 0; i < scene.object_size; i++) {
+		Object& cur_obj = scene.objects[i];
+		if (cur_obj.primitive_type == OBJECT_TYPE::SPHERE) {
+			cur_obj.accel =  GRAVITY / 1000;
+		}
+	}
+}
+void calculate_physics(Scene &scene, float time, float deltaTime) {
+	apply_accel(scene);
+	update_position(scene, deltaTime);
 }
 
 void cuda_update(float3* output) {
+	float time = getTime(time_begin);
+	float deltaTime = time - last_frame_time;
 
-	cuda_test_pos << <1, 1 >> > (cuda_scene_ptr, getTime(time_begin));
-	checkCudaErrors(cudaDeviceSynchronize());
+	int obj_size = MAX_OBJECT_SIZE;
+
 	dim3 blocks(nx / tx + 1, ny / ty + 1);
 	dim3 threads(tx, ty);
 	cuda_trace_object << <blocks, threads >> > (cuda_scene_ptr, nx, ny, scene_screen_ratio, cuda_fb_ptr);
 	checkCudaErrors(cudaDeviceSynchronize());
+
 	cudaMemcpy(output, cuda_fb_ptr, cuda_fb_size, cudaMemcpyDeviceToHost);
+	cudaMemcpy(scene_ptr, cuda_scene_ptr, sizeof(Scene), cudaMemcpyDeviceToHost);
+	calculate_physics(*scene_ptr, time, deltaTime);
+	cudaMemcpy(cuda_scene_ptr, scene_ptr, sizeof(Scene), cudaMemcpyHostToDevice);
+	last_frame_time = time;
+}
+__global__ void cuda_generate_sphere(Object* sphere) {
+
+	cuda_scene_ptr->addObject(*sphere);
+}
+
+void generate_sphere()
+{
+	Object* sphere = new Object;
+	float x = 2 - random_float() * 4;
+	float y = 4 + random_float() * 3;
+	float z = -5 - random_float() * 4;
+
+	float radius = 0.1 + random_float() * 0.3 + 0.25;
+	sphere->SetSphere({ x,y,z }, radius);
+
+	sphere->color = { random_float(), random_float(), random_float() };
+	sphere->shininess = random_float();
+	sphere->transparency = random_float();
+	sphere->reflectiveness = random_float();
+	sphere->refractive_index = random_float();
+	sphere->speed = { -x * 0.5f , 0, (z+5)*0.5f };
+
+	Object* gpu_sphere;
+	checkCudaErrors(cudaMalloc(&gpu_sphere, sizeof(Object)));
+	checkCudaErrors(cudaMemcpy(gpu_sphere, sphere, sizeof(Object), cudaMemcpyHostToDevice));
+	cuda_generate_sphere << <1, 1 >> > (gpu_sphere);
+	checkCudaErrors(cudaDeviceSynchronize());
 }
 
 __global__ void cuda_add_light_power(float amount)

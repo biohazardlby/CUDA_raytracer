@@ -8,8 +8,8 @@
 
 
 GLFWwindow* window;
-int SCREEN_WIDTH = 1600;
-int SCREEN_HEIGHT = 800;
+int SCREEN_WIDTH = 600;
+int SCREEN_HEIGHT = 400;
 float LdMax = 1;
 TR_TYPE TR_method = TR_TYPE::WARD;
 
@@ -68,16 +68,20 @@ void tone_reproduction(float3* pixels, TR_TYPE type, float LdMax) {
 	}
 }
 
-void key_callBack(GLFWwindow* window, int key, int scancode, int action, int mod) {
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod) {
+	//switch TR method
 	if (key == GLFW_KEY_T && action == GLFW_PRESS) {
 		TR_method = static_cast<TR_TYPE>((static_cast<int>(TR_method) + 1) % (static_cast<int>(TR_TYPE::DUMMY)));
-		printf("%d", static_cast<int>(TR_method));
 	}
+	//modify light
 	if (key == GLFW_KEY_KP_ADD && action == GLFW_PRESS) {
 		add_light_power(10);
 	}
 	if (key == GLFW_KEY_KP_SUBTRACT && action == GLFW_PRESS) {
 		add_light_power(-10);
+	}
+	if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+		generate_sphere();
 	}
 }
 
@@ -124,7 +128,7 @@ void setup_viewport() {
 
 int main(int argc, char* argv[])
 {
-
+	srand(time(NULL));
 	if (!glfwInit())
 	{
 		fprintf(stderr, "Failed to initialize GLFW\n");
@@ -135,7 +139,7 @@ int main(int argc, char* argv[])
 	setup_viewport();
 
 	init_cuda( SCREEN_WIDTH, SCREEN_HEIGHT);
-	glfwSetKeyCallback(window, key_callBack);
+	glfwSetKeyCallback(window, key_callback);
 
 	// Main loop
 	while (!glfwWindowShouldClose(window))

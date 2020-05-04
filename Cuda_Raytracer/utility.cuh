@@ -2,11 +2,15 @@
 
 #include <iostream>
 #include <cuda_runtime.h>
+
 #include <time.h>
 #include <chrono>
+#include <ctime>
 
 #define PI 3.14159265359
 #define kEpsilon 0.01
+#define MAX_OBJECT_SIZE 10;
+
 
 //column majored matrix
 class mat4x4 {
@@ -23,6 +27,7 @@ enum class OBJECT_TYPE {
 enum class TR_TYPE {
 	WARD, REINHARD, DUMMY
 };
+
 
 __host__ __device__ float rad_2_deg(float rad);
 __host__ __device__ float deg_2_rad(float degree);
@@ -56,9 +61,11 @@ __host__ __device__ float angle(float3 v1, float3 v2);
 
 __host__ __device__ float3 phongShading(float3 lightPos, float3 normal, float3 fragPos, float3 viewPos, float3 lightColor, float3 ambientColor, float3 diffuseColor, float shininess);
 
-__device__ float3 reflect(float3 input_vec, float3 normal);
+__host__ __device__ float3 reflect(float3 input_vec, float3 normal);
 __device__ float3 refract(float3 input_vec, float3 normal, float ni, float nt);
 __host__ __device__ float getTime(std::chrono::time_point<std::chrono::steady_clock> time_begin);
 __host__ __device__ float3 rotateAbout(std::chrono::time_point<std::chrono::steady_clock> time_begin, float3 rotCenter, float3& origin, float A, float f, float shift, float x_mult, float y_mult, float z_mult);
 
 __host__ __device__ float getLuminance(float3 color);
+
+__host__ __device__ float random_float();
