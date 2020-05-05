@@ -1,5 +1,15 @@
 # CUDA_raytracer
-ray tracer using CUDA for class CSCI-711
+ray tracer using CUDA for class CSCI-711.
+
+This is a CUDA Raytracing project implement sphere collision detection. The project uses cuda to compute each pixel's color and render using OPENGL/GLFW. 
+
+There is a built exe file to execute the program.
+
+How to operate:
+
+- s:		tgenerate new sphere
+- +/- on numpad:	change light intensity
+- t:		change tone reproduction method
 
 Current progress video: https://www.youtube.com/watch?v=bIqZGtwRsuo&feature=youtu.be
 
