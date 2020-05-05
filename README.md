@@ -5,13 +5,12 @@ This is a CUDA Raytracing project implement sphere collision detection. The proj
 
 There is a built exe file to execute the program.
 
-How to operate:
+Keyboard shortcut:
 
 - s:		tgenerate new sphere
 - +/- on numpad:	change light intensity
 - t:		change tone reproduction method
 
-Current progress video: https://www.youtube.com/watch?v=bIqZGtwRsuo&feature=youtu.be
 
 Build with visual sutdio:
 	Dependencies:
