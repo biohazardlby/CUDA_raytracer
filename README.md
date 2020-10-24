@@ -1,5 +1,5 @@
 # CUDA_raytracer
-ray tracer using CUDA for class CSCI-711.
+Ray tracing rendering pipeline using CUDA for class CSCI-711.
 
 Final video demo: https://youtu.be/Btuc_D0diA8
 
@@ -9,9 +9,9 @@ There is a built exe file to execute the program.
 
 Keyboard shortcut:
 
-- s:		tgenerate new sphere
+- s:			generate new sphere
 - +/- on numpad:	change light intensity
-- t:		change tone reproduction method
+- t:			change tone reproduction method
 
 
 Build with visual sutdio:
